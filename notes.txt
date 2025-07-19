@@ -1,6 +1,14 @@
 add notes here
 
 
+Use git status to see what’s changed
+
+Use git add <filename> to stage files
+
+Use git commit -m "Your message" to save your changes
+
+Use git push to upload your changes to GitHub
+
 // Spectral Rolloff Python only
 
 def compute_spectral_rolloff(spectrogram, roll_percent=0.99):
