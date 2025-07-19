@@ -1,0 +1,11 @@
+# Build artifacts
+build/*
+
+# Compiled shared object (.so) module
+*.so 
+
+# Virtual environment
+.venv/*
+
+# Data files
+data/*

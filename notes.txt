@@ -1,0 +1,43 @@
+add notes here
+
+
+// Spectral Rolloff Python only
+
+def compute_spectral_rolloff(spectrogram, roll_percent=0.99):
+    rolloff = []
+    for frame in spectrogram.T:
+        total_energy = np.sum(frame)
+        threshold = roll_percent * total_energy
+        cumulative = np.cumsum(frame)
+        roll_bin = np.argmax(cumulative >= threshold)
+        rolloff.append(roll_bin)
+    return np.array(rolloff)
+
+rolloff_bins = compute_spectral_rolloff(spectrogram)
+rolloff_hz = rolloff_bins * (sample_rate / frame_size)
+
+plt.figure(figsize=(10, 4))
+plt.plot(frame_times, rolloff_hz)
+plt.title("Spectral Rolloff (99%)")
+plt.xlabel("Time (s)")
+plt.ylabel("Frequency (Hz)")
+plt.grid(True)
+plt.tight_layout()
+
+// MFCC Python only
+
+//*** run 'pip install librosa'
+
+import librosa
+import librosa.display
+
+signal_np = np.array(signal)
+mfccs = librosa.feature.mfcc(y=signal_np, sr=sample_rate, n_mfcc=13, hop_length=hop_size, n_fft=frame_size)
+
+plt.figure(figsize=(10, 4))
+librosa.display.specshow(mfccs, sr=sample_rate, hop_length=hop_size, x_axis='time')
+plt.colorbar()
+plt.title("MFCCs")
+plt.tight_layout()
+
+
