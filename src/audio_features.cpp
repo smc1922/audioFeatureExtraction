@@ -39,6 +39,38 @@ g++ -Iinclude -Isrc \
 #include <fftw3.h>
 #include <complex>
 #include <fft_stft.hpp>
+#include <portaudio_capture.hpp>
+
+//port audio capture
+std::unique_ptr<AudioStreamer> g_streamer;
+
+void start_streaming(int sample_rate = 48000, int frames_per_buffer = 512) {
+    if (!g_streamer) {
+        g_streamer = std::make_unique<AudioStreamer>(sample_rate, frames_per_buffer);
+        g_streamer->start();
+    }
+}
+
+void stop_streaming() {
+    if (g_streamer) {
+        g_streamer->stop();
+        //g_streamer.reset();
+    }
+}
+
+void clear_buffer() {
+    if (g_streamer) {
+        g_streamer->flushBuffer();
+        g_streamer.reset();
+    }
+}
+
+std::vector<float> get_live_audio_buffer() {
+    if (g_streamer) {
+        return g_streamer->getBufferedAudio();
+    }
+    return {};
+}
 
 // get wave data from selected file and 
 std::pair<std::vector<float>, int> get_wav_data(std::string const wav_filename) {
@@ -133,4 +165,20 @@ PYBIND11_MODULE(audio_features, m) {
     m.def("compute_spectral_centroid", &compute_spectral_centroid, "Compute spectral centroid from STFT");
     m.def("compute_spectral_rolloff", &compute_spectral_rolloff, "Compute spectral rolloff frequency (Hz) for each frame");
     m.def("compute_mfcc", &compute_mfcc, "Compute MFCCs given spectrogram; returns [n_frames][n_mfcc]");
+    m.def("start_streaming", &start_streaming, "Start live audio capture");
+    m.def("stop_streaming", &stop_streaming, "Stop live audio capture");
+    m.def("get_live_audio_buffer", &get_live_audio_buffer, "Get current live audio buffer");
+    m.def("start_streaming", [](int sample_rate, int hop_size) {
+        g_streamer = std::make_unique<AudioStreamer>(sample_rate, hop_size);
+        if (!g_streamer->start()) throw std::runtime_error("Failed to start stream");
+    });
+    m.def("stop_streaming", []() {
+        g_streamer->stop();
+    });
+    m.def("get_live_audio_buffer", []() {
+        return g_streamer->getBufferedAudio();
+    });
+    m.def("flush_buffer", []() {
+        g_streamer->flushBuffer();
+    });
 }

@@ -49,3 +49,664 @@ plt.title("MFCCs")
 plt.tight_layout()
 
 
+PROJECT SUMMARY AND FILES LIST FOR CHATGPT (TO SET UP PORTAUDIO)
+_____________________________________________________
+I have a project with the following files:
+
+- test_audio_features.py
+import audio_features
+import numpy as np
+import matplotlib.pyplot as plt
+
+# safe import of audio_features.so to avoid loading stale file from sys.path
+import importlib.util
+import sys
+import os
+
+so_path = os.path.abspath("audio_features.so")
+spec = importlib.util.spec_from_file_location("audio_features", so_path)
+audio_features = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(audio_features)
+
+# Test with random signal (using std::vector, so must use python list, cannot accept numpy 1D array)
+#signal = [0.1, -0.2, 0.3, -0.4, 0.0, 0.5]
+# make this go get the 
+signal, sample_rate = audio_features.get_wav_data("data/053847_korg-mono-poly-84275.wav")
+
+rms = audio_features.calc_rms(signal)
+zcr = audio_features.calc_zcr(signal)
+
+print("RMS:", rms)
+print("ZCR:", zcr)
+
+signal_np = np.array(signal)
+
+duration = len(signal) / sample_rate # total seconds
+time_np = np.linspace(0, duration, num=len(signal), endpoint=False)
+
+# Assume: signal = np.array([...]), sample_rate = 44100
+# Compute RMS for fixed-size frames:
+frame_size = 1024
+hop_size = 512
+
+# set rollof percent, n mel filters, and n mfcc
+rolloff_pct = 99
+n_mel_filters = 26
+num_mfcc = 13
+
+num_frames = 1 + (len(signal) - frame_size) // hop_size
+rms_values = []
+
+for i in range(num_frames):
+    start = i * hop_size
+    frame = signal[start:start+frame_size]
+    rms = audio_features.calc_rms(frame)  # pass list if using pybind11
+    rms_values.append(rms)
+
+# Time indices for frames (centered or start)
+frame_times = np.arange(num_frames) * hop_size / sample_rate
+
+zcr_values = []
+for i in range(num_frames):
+    start = i * hop_size
+    frame = signal[start:start+frame_size]
+    zcr = audio_features.calc_zcr(frame)
+    zcr_values.append(zcr)
+
+print("================Start of Amplitude Spectrum==============================")
+# Compute amplitude spectrum
+stft = audio_features.compute_stft(signal, frame_size, hop_size)
+spectrogram = np.array(stft).T  # shape: [freq_bins, time_frames]
+
+print("================Start Spectral Centroid==============================")
+# Compute Spectral Centroid
+centroids = audio_features.compute_spectral_centroid(stft, sample_rate, frame_size)
+
+print("================Start of Conversion==============================")
+# Convert frame indices to time
+frame_times = np.arange(len(centroids)) * hop_size / sample_rate
+
+print("================Start of Rolloff==============================")
+# rolloff and mfccs
+rolloff = audio_features.compute_spectral_rolloff(stft, sample_rate, frame_size, rolloff_pct)
+
+print("================Start of MFCC==============================")
+mfccs = audio_features.compute_mfcc(stft, sample_rate, frame_size, 26, 13)
+
+# convert mfccs (python list of lists) to NumPy array
+mfccs_np = np.array(mfccs)
+
+# # Plot with subplots (figure 1)
+fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+
+axs[0].plot(np.arange(len(signal_np)) / sample_rate, signal_np)
+axs[0].set_title("Waveform")
+axs[0].set_ylabel("Amplitude")
+
+axs[1].plot(frame_times, rms_values, color='red')
+axs[1].set_title("RMS")
+axs[1].set_ylabel("RMS")
+
+axs[2].plot(frame_times, zcr_values, color='green')
+axs[2].set_title("Zero Crossing Rate")
+axs[2].set_ylabel("ZCR")
+axs[2].set_xlabel("Time (s)")
+
+plt.tight_layout()
+
+# waveform plot (figure 2)
+plt.figure()
+plt.plot(time_np,signal_np)
+plt.xlabel("Time (s)")
+plt.ylabel("Amplitude")
+plt.title("Waveform")
+
+# amplitude spectogram plot
+plt.figure(figsize=(10, 4))
+plt.imshow(20 * np.log10(spectrogram + 1e-10), origin='lower', aspect='auto', cmap='inferno')
+plt.title("Spectrogram")
+plt.xlabel("Time")
+plt.ylabel("Frequency Bin")
+plt.colorbar(label="dB")
+plt.tight_layout()
+
+# spectral centroid plot
+plt.figure(figsize=(10, 4))
+plt.plot(frame_times, centroids)
+plt.title("Spectral Centroid")
+plt.xlabel("Time (s)")
+plt.ylabel("Frequency (Hz)")
+plt.grid(True)
+plt.tight_layout()
+
+# centroid, rolloff, and MFCCs plot
+fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+
+axs[0].plot(frame_times, centroids, label='Centroid (Hz)')
+axs[0].set_ylabel("Hz")
+axs[0].legend()
+
+axs[1].plot(frame_times, rolloff, label='Rolloff (Hz)', color='magenta')
+axs[1].set_ylabel("Hz")
+axs[1].legend()
+
+im = axs[2].imshow(np.array(mfccs).T, origin='lower', aspect='auto',
+                   extent=[0, duration, 0, mfccs_np.shape[1]])
+axs[2].set_xlabel("Time (s)")
+axs[2].set_ylabel("MFCC Coefficient")
+fig.colorbar(im, ax=axs[2], label='coeff value')
+
+plt.tight_layout()
+
+# show plots
+print("Showing plots")
+plt.show()
+
+# # MFCC Placeholder
+# # plt.figure()
+# # plt.imshow(mfccs, aspect='auto', origin='lower', extent=[0, duration, 0, num_mfcc])
+# # plt.title("MFCCs")
+# # plt.xlabel("Time (s)")
+# # plt.ylabel("MFCC Coefficients")
+# # plt.colorbar()
+# # plt.show()
+
+# ## pull data directly into the c++ file from the .wav file
+# ## python is the starting point, is orchestrator and does visualization
+
+# ## can pull the data into python if it's not going to be realtime (may want to hold the data in python
+# ## then access various models/expose the data to different modules that only integrate with python)
+
+# ## Debugging Notes
+# # redirect script ouput to txt file (run the following in terminal)
+# # python your_script.py > output.txt 2>&1
+
+in an src/ folder
+- audio_features.cpp
+/**
+ * Implement audio feature functions: RMS and ZCR
+ * Use pybind11 to expose them to Python
+ * Define the PYBIND11_MODULE(audio_features, m) module (its own python module named audio_features)
+ * Build this via CMake as a separate Python extension module like wav_player, this is its own build target
+ * 
+ * COMPILATION
+g++ -Iinclude -Isrc \
+  -g -O0 -Wall -shared -fPIC \
+  `python3 -m pybind11 --includes` \
+  src/audio_features.cpp -o audio_features$(python3-config --extension-suffix) \
+  -lfftw3
+
+  // must be run in root proj dir, dumps compiled file in this directory tho (not in src)
+
+
+| Command Part                           | Meaning                                             |
+| -------------------------------------- | --------------------------------------------------- |
+| `-shared -fPIC`                        | Build a shared library (needed for Python modules)  |
+| `` `python3 -m pybind11 --includes` `` | Adds `-I/usr/include/python3.x` and `-Ipybind11`    |
+| `$(python3-config --extension-suffix)` | Appends `.so` or platform-specific extension suffix |
+| `-lfftw3`                              | Link with FFTW                                      |
+
+
+*  VALGRIND
+# valgrind --leak-check=full --track-origins=yes --time-stamp=yes -s ./audio_features
+ */
+
+#include <pybind11/pybind11.h> // must install Python development packaget and add its include path when compiling (sudo apt install python3-dev)
+#include <pybind11/stl.h>   // automatic conversion of std::vector
+#include <pybind11/numpy.h> // for upgrade to numpy support (no longer need vector or pybind11/stl.h unless I use std::vector elsewhere)
+                            // change all std::vector<float> to py::array_t<float>, use sig.request() and buf.ptr if I want to switch
+                            // py::array_t<T> is how pybind11 maps NumPy arrays to C++
+#include <vector>
+#include <cmath>
+#include <sndfile.h>
+#include <iostream>
+#include <sndfile.h>
+#include <fftw3.h>
+#include <complex>
+#include <fft_stft.hpp>
+
+// get wave data from selected file and 
+std::pair<std::vector<float>, int> get_wav_data(std::string const wav_filename) {
+    // convert string soundfile name to char
+    const char* wav_filename_char = wav_filename.c_str();
+    
+    std::vector<float> signal_vector;
+    SF_INFO sfinfo;
+    SNDFILE *file = sf_open(wav_filename_char, SFM_READ, &sfinfo);
+    int sample_rate = sfinfo.samplerate;
+
+    if (!file) {
+        std::cerr << "Failed to open file\n";
+        return std::make_pair(signal_vector, sample_rate);
+    }
+
+    std::vector<short> samples(sfinfo.frames * sfinfo.channels);
+    sf_readf_short(file, samples.data(), sfinfo.frames);
+    sf_close(file);
+
+    // DEBUGGING
+    // // Print size of vector
+    // std::cout << "Vector Size before cast: " << samples.size() << std::endl;
+
+    // // Print first 10 samples of std::vector<short>
+    // for (int i = 0; i < 10 && i < samples.size(); ++i) {
+    //     std::cout << "Short Sample[" << i << "] = " << samples[i] << "\n";
+    // }
+
+    // Convert short samples to float in range [-1.0, 1.0]
+    signal_vector.reserve(samples.size());
+    for (short s : samples) {
+        signal_vector.push_back(static_cast<float>(s) / 32768.0f);
+    }
+
+    // DEBUGGING    
+    // // Print first 10 samples of std::vector<float>
+    // for (int i = 0; i < 10 && i < samples.size(); ++i) {
+    //     std::cout << "Float Sample[" << i << "] = " << samples[i] << "\n";
+    // }
+
+    // // Print size of vector
+    // std::cout << "Vector Size just before return: " << samples.size() << std::endl;
+
+    return std::make_pair(signal_vector, sample_rate);
+}
+
+
+// audio feature functions (currently rms and zcr)
+float calc_rms(const std::vector<float>& sig) {
+    float squares = 0.0;
+    int N = sig.size();
+
+    for (int i = 0; i < N; ++i) {
+        squares += (sig[i] * sig[i]);
+    }
+    // Print statement for debugging
+    // std::cout << sqrt(squares/ static_cast<float>(N)) << std::endl;
+
+    return std::sqrt(squares / static_cast<float>(N));
+}
+
+float calc_zcr(const std::vector<float>& sig) {
+    int zcr_count = 0;
+    int same_sign_count = 1;
+    int N = sig.size(); //total number of samples in the audio sig
+
+    for (int i = 1; i < N; ++i) { // start comparison at second sig to compare to first
+        int current_sign = (sig[i] > 0) - (sig[i] < 0);
+        int prev_sign = (sig[i - same_sign_count] > 0) - (sig[i - same_sign_count] < 0);
+
+        if (current_sign == 0 || current_sign == prev_sign) {
+            same_sign_count++;
+        } else {
+            zcr_count++;
+            same_sign_count = 1;
+        }
+    }
+    // Print statement for debugging
+    // std::cout << static_cast<float>(zcr_count) / N << std::endl;
+
+    return static_cast<float>(zcr_count) / N;
+}
+
+// python module definition
+PYBIND11_MODULE(audio_features, m) {
+    m.doc() = "Audio feature extraction module (zcr and rms numpy version)";
+    m.def("get_wav_data", &get_wav_data, "Read a Wav file and return samples as a float vector and sample rate as an int");
+    m.def("calc_rms", &calc_rms, "Calculate Root Mean Square of a 1D NumPy array");
+    m.def("calc_zcr", &calc_zcr, "Calculate Zero Crossing Rate of a 1D NumPy array");
+    m.def("compute_stft", &compute_stft, "Compute STFT (amplitude spectrum)");
+    m.def("compute_spectral_centroid", &compute_spectral_centroid, "Compute spectral centroid from STFT");
+    m.def("compute_spectral_rolloff", &compute_spectral_rolloff, "Compute spectral rolloff frequency (Hz) for each frame");
+    m.def("compute_mfcc", &compute_mfcc, "Compute MFCCs given spectrogram; returns [n_frames][n_mfcc]");
+}
+- fft_stft.cpp
+// FFT and STFT implementation
+
+#include <fftw3.h>
+#include <vector>
+#include <complex>
+#include <cmath>
+#include <algorithm>
+#include <numeric>
+#include <iostream>
+
+// FFT
+std::vector<std::complex<double>> compute_fft(const std::vector<double>& input) {
+    int N = input.size();
+    fftw_complex* out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
+    double* in = (double*) fftw_malloc(sizeof(double) * N);
+
+    std::copy(input.begin(), input.end(), in);
+
+    fftw_plan plan = fftw_plan_dft_r2c_1d(N, in, out, FFTW_ESTIMATE);
+    fftw_execute(plan);
+
+    std::vector<std::complex<double>> result(N / 2 + 1);
+    for (int i = 0; i < N / 2 + 1; ++i)
+        result[i] = std::complex<double>(out[i][0], out[i][1]);
+
+    fftw_destroy_plan(plan);
+    fftw_free(in);
+    fftw_free(out);
+
+    return result;
+}
+
+// STFT with windowing
+std::vector<std::vector<double>> compute_stft(const std::vector<double>& signal, int win_len, int hop_len) {
+    int num_frames = (signal.size() - win_len) / hop_len + 1;
+
+    // Hann window
+    std::vector<double> window(win_len);
+    for (int i = 0; i < win_len; ++i)
+        window[i] = 0.5 * (1 - std::cos(2 * M_PI * i / (win_len - 1)));
+
+    std::vector<std::vector<double>> spectrogram;
+
+    for (int frame = 0; frame < num_frames; ++frame) {
+        std::vector<double> segment(win_len);
+        for (int i = 0; i < win_len; ++i)
+            segment[i] = signal[frame * hop_len + i] * window[i];
+
+        auto fft_result = compute_fft(segment);
+
+        std::vector<double> magnitude(fft_result.size());
+        for (size_t k = 0; k < fft_result.size(); ++k)
+            magnitude[k] = std::abs(fft_result[k]);
+
+        spectrogram.push_back(std::move(magnitude));
+    }
+
+    return spectrogram;
+}
+
+// Spectral Centroid
+std::vector<double> compute_spectral_centroid(const std::vector<std::vector<double>>& spectrogram, int sample_rate, int fft_size) {
+    std::vector<double> centroids;
+
+    double bin_hz = static_cast<double>(sample_rate) / fft_size;
+
+    for (const auto& frame : spectrogram) {
+        double weighted_sum = 0.0;
+        double magnitude_sum = 0.0;
+
+        for (size_t k = 0; k < frame.size(); ++k) {
+            weighted_sum += k * bin_hz * frame[k];  // bin index * frequency * magnitude
+            magnitude_sum += frame[k];
+        }
+
+        if (magnitude_sum > 1e-6)
+            centroids.push_back(weighted_sum / magnitude_sum);
+        else
+            centroids.push_back(0.0);
+    }
+
+    return centroids;
+}
+
+// Spectral Rolloff (frequency below which 99 percent of spectral energy is contained)
+std::vector<double> compute_spectral_rolloff(
+    const std::vector<std::vector<double>>& spectrogram,
+    int sample_rate, int fft_size, double rolloff_pct) {
+
+    int bins = spectrogram[0].size();
+    double bin_hz = static_cast<double>(sample_rate) / fft_size;
+    std::vector<double> rolloffs;
+    rolloffs.reserve(spectrogram.size());
+
+    for (const auto& frame : spectrogram) {
+        double total_energy = 0;
+        for (double mag : frame) total_energy += mag;
+        double threshold = rolloff_pct * total_energy;
+
+        double cumulative = 0;
+        int roll_bin = bins - 1;
+        for (int k = 0; k < bins; ++k) {
+            cumulative += frame[k];
+            if (cumulative >= threshold) { roll_bin = k; break; }
+        }
+        rolloffs.push_back(roll_bin * bin_hz);
+    }
+    return rolloffs;
+}
+
+// MFCCs
+
+// Helpers: mel/freq conversion
+double hz_to_mel(double hz) { return 2595 * std::log10(1 + hz / 700.0); }
+double mel_to_hz(double mel) { return 700 * (std::pow(10, mel / 2595.0) - 1); }
+
+std::vector<std::vector<double>> compute_mfcc(
+    const std::vector<std::vector<double>>& spectrogram,
+    int sample_rate, int fft_size, int n_mel=26, int n_mfcc=13) {
+
+    int n_frames = spectrogram.size();
+    int n_bins = fft_size / 2 + 1;
+    double max_mel = hz_to_mel(sample_rate / 2.0);
+    double min_mel = hz_to_mel(0.0);
+    std::vector<double> mel_points(n_mel + 2);
+
+    for (int i = 0; i < (int)mel_points.size(); ++i)
+        mel_points[i] = mel_to_hz(min_mel + (max_mel - min_mel) * i / (n_mel + 1));
+
+    std::vector<int> bin_indices(mel_points.size());
+    for (size_t i = 0; i < mel_points.size(); ++i)
+        bin_indices[i] = static_cast<int>(std::floor((fft_size + 1) * mel_points[i] / sample_rate));
+
+    std::vector<std::vector<double>> mel_filterbank(n_mel, std::vector<double>(n_bins, 0.0));
+    for (int m = 1; m <= n_mel; ++m) {
+        int f_m_minus = bin_indices[m - 1];
+        int f_m = bin_indices[m];
+        int f_m_plus = bin_indices[m + 1];
+        for (int k = f_m_minus; k < f_m; ++k)
+            mel_filterbank[m - 1][k] = (k - f_m_minus) / double(f_m - f_m_minus);
+        for (int k = f_m; k < f_m_plus; ++k)
+            mel_filterbank[m - 1][k] = (f_m_plus - k) / double(f_m_plus - f_m);
+    }
+
+    std::vector<std::vector<double>> mfccs(n_frames, std::vector<double>(n_mfcc));
+    for (int t = 0; t < n_frames; ++t) {
+        std::vector<double> mel_energies(n_mel, 0.0);
+        for (int m = 0; m < n_mel; ++m)
+            for (int k = 0; k < n_bins; ++k)
+                mel_energies[m] += spectrogram[t][k] * mel_filterbank[m][k];
+        for (auto& e : mel_energies) e = std::log(e + 1e-10);
+
+        for (int i = 0; i < n_mfcc; ++i) {
+            double sum = 0;
+            for (int m = 0; m < n_mel; ++m)
+                sum += mel_energies[m] * std::cos(M_PI * i * (m + 0.5) / n_mel);
+            mfccs[t][i] = sum;
+        }
+    }
+    return mfccs;
+}
+
+// add main function to use valgrind
+// int main() {
+//     std::vector<double> signal = {0.0, 1.0, 0.0, -1.0};  // simple test signal
+
+//     auto fft_result = compute_fft(signal);
+
+//     std::cout << "FFT Result:\n";
+//     for (const auto& c : fft_result)
+//         std::cout << c << "\n";
+
+//     return 0;
+// }
+
+// compile c++ files to check for memory leaks
+// g++ -g -o fft_stft fft_stft.cpp
+
+// run valgrind to find memory leaks
+// # valgrind --leak-check=full --track-origins=yes --time-stamp=yes -s ./fft_stft
+/**
+ * ==00:00:00:00.951 286830== 
+==00:00:00:00.951 286830== HEAP SUMMARY:
+==00:00:00:00.951 286830==     in use at exit: 52,768 bytes in 617 blocks
+==00:00:00:00.951 286830==   total heap usage: 661 allocs, 44 frees, 216,252 bytes allocated
+==00:00:00:00.951 286830== 
+==00:00:00:00.952 286830== LEAK SUMMARY:
+==00:00:00:00.952 286830==    definitely lost: 0 bytes in 0 blocks
+==00:00:00:00.952 286830==    indirectly lost: 0 bytes in 0 blocks
+==00:00:00:00.952 286830==      possibly lost: 0 bytes in 0 blocks
+==00:00:00:00.952 286830==    still reachable: 52,768 bytes in 617 blocks
+==00:00:00:00.952 286830==         suppressed: 0 bytes in 0 blocks
+==00:00:00:00.952 286830== Reachable blocks (those to which a pointer was found) are not shown.
+==00:00:00:00.952 286830== To see them, rerun with: --leak-check=full --show-leak-kinds=all
+==00:00:00:00.952 286830== 
+==00:00:00:00.952 286830== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+ */
+in an include/ folder
+- fft_stft.hpp:
+// FFT and STFT cpp header
+#pragma once
+
+#include <vector>
+#include <complex>
+
+// FFT
+std::vector<std::complex<double>> compute_fft(
+    const std::vector<double>& input);
+
+// STFT with windowing
+std::vector<std::vector<double>> compute_stft(
+    const std::vector<double>& signal, 
+    int win_len, 
+    int hop_len);
+
+// Spectral Centroid
+std::vector<double> compute_spectral_centroid(
+    const std::vector<std::vector<double>>& spectrogram, 
+    int sample_rate, 
+    int fft_size);
+
+// Spectral Rolloff
+std::vector<double> compute_spectral_rolloff(
+    const std::vector<std::vector<double>>& spectrogram,
+    int sample_rate, int fft_size,
+    double rolloff_pct = 0.99);
+//    double rolloff_pct = 0.99);
+
+// MFCCs
+std::vector<std::vector<double>> compute_mfcc(
+    const std::vector<std::vector<double>>& spectrogram,
+    int sample_rate, int fft_size, int num_mel_filters = 26, int num_mfcc=13);
+//    int sample_rate, int fft_size, int num_mel_filters = 26, int num_mfcc = 13);
+in a data/ folder
+- file_example_WAV_1MG.wav
+
+in my project root folder
+- CMakeLists.txt:
+# Minimum CMake version required
+cmake_minimum_required(VERSION 3.12)
+
+# Name of the project
+# saying project(WavPlayer) and then, project(audio_features) will override, can only define project once
+project(WavPlayer)
+
+# Use C++14
+set(CMAKE_CXX_STANDARD 14)
+
+# CMake doesn't know where to fine pybind11 since installed via pip w.out the following 
+# Get pybind11 location from pip-installed package
+# this allows 'find_package(pybind11 REQUIRED)' to work
+execute_process(
+    COMMAND python3 -m pybind11 --cmakedir
+    OUTPUT_VARIABLE pybind11_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+set(pybind11_DIR ${pybind11_dir})
+# find_package(pybind11 REQUIRED)
+
+# Find pybind11, required for Python bindings
+find_package(pybind11 REQUIRED)
+
+# Find libsndfile
+find_library(SNDFILE_LIBRARY sndfile REQUIRED)
+
+# Find fftw3
+find_library(FFTW_LIB fftw3 REQUIRED)
+
+# ===================================== wav_player module =============================================================
+# Define a shared library (Python module) named 'wav_player'
+add_library(wav_player MODULE
+    src/wav_player.cpp
+    src/wav_player_pybind.cpp
+)
+
+# Include header files for wav_player module 
+target_include_directories(wav_player PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Link pybind11 to wav_player module
+target_link_libraries(wav_player PRIVATE pybind11::module)
+
+# Remove the 'lib' prefix and set the suffix to '.so' (Python expects this format)
+set_target_properties(wav_player PROPERTIES PREFIX "" SUFFIX ".so")
+
+# Automatically move wav_player.so to the project root directory after build
+add_custom_command(TARGET wav_player POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:wav_player>
+            ${CMAKE_SOURCE_DIR}/wav_player.so
+    COMMENT "Moving wav_player.so to project root directory"
+)
+
+# ===================================== audio_features module ===========================================================
+# Define shared library (Python module) named 'audio_features.cpp'
+add_library(audio_features MODULE
+    src/audio_features.cpp
+    src/fft_stft.cpp
+)
+
+# no idea what this does different than the block above
+# pybind11_add_module(audio_features audio_features.cpp)
+
+# Include header files for audio_features module
+target_include_directories(audio_features PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# In CMake, each  target link call replaces the previous one, unless you use target_link_libraries() only once or combine all dependencies
+# Link pybind11, libsndfile, and fftw-3.3.10 to audio_features
+target_link_libraries(audio_features PRIVATE
+    pybind11::module
+    ${SNDFILE_LIBRARY}
+    ${FFTW_LIB}
+)
+
+# Set the output to be a .so with no 'lib' prefix (required by Python)
+set_target_properties(audio_features PROPERTIES PREFIX "" SUFFIX ".so")
+
+# Move the .so file to the project root directory after build
+add_custom_command(TARGET audio_features POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:audio_features>
+        ${CMAKE_SOURCE_DIR}/audio_features.so
+    COMMENT "Moving audio_features.so to project root directory"
+)
+
+# FULL BUILD STEPS
+# cd /home/elle/Documents/github_repos/audioFeatureExtraction
+
+# rm -rf build/
+# mkdir -p build
+# cd build
+# cmake -DPython_EXECUTABLE=$(which python3) ..
+# make
+# cd ..
+
+# this replaces the existing .so file as long as the name is the same
+# only need to clean build/
+
+# MEMORY LEAK CHECKS USING VALGRIND
+
+# valgrind --leak-check=full --track-origins=yes python3 test_audio_features.py
+# valgrind --leak-check=full --track-origins=yes --time-stamp=yes -s ./fft_stft
+
+
+- fftw-3.3.10
+- gitignore
+
+_____________________________________________
+
+I would like to now implement real-time audio streaming with portaudio, develop a buffering system for real-time streams, and write python bindings to start/stop live audio capture. What steps should I take?
+

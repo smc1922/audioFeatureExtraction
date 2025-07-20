@@ -28,11 +28,16 @@ find_library(SNDFILE_LIBRARY sndfile REQUIRED)
 # Find fftw3
 find_library(FFTW_LIB fftw3 REQUIRED)
 
+# Find portaudio_lib
+find_library(PORTAUDIO_LIB portaudio REQUIRED)
+
+
 # ===================================== wav_player module =============================================================
 # Define a shared library (Python module) named 'wav_player'
 add_library(wav_player MODULE
     src/wav_player.cpp
     src/wav_player_pybind.cpp
+    src/portaudio_capture.cpp
 )
 
 # Include header files for wav_player module 
@@ -57,6 +62,7 @@ add_custom_command(TARGET wav_player POST_BUILD
 add_library(audio_features MODULE
     src/audio_features.cpp
     src/fft_stft.cpp
+    src/portaudio_capture.cpp
 )
 
 # no idea what this does different than the block above
@@ -71,6 +77,7 @@ target_link_libraries(audio_features PRIVATE
     pybind11::module
     ${SNDFILE_LIBRARY}
     ${FFTW_LIB}
+    ${PORTAUDIO_LIB}
 )
 
 # Set the output to be a .so with no 'lib' prefix (required by Python)
