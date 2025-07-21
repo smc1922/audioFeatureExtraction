@@ -45,17 +45,22 @@ g++ -Iinclude -Isrc \
 std::unique_ptr<AudioStreamer> g_streamer;
 
 void start_streaming(int sample_rate = 48000, int frames_per_buffer = 512) {
+    std::cout << "start_streaming start" << "\n";
     if (!g_streamer) {
         g_streamer = std::make_unique<AudioStreamer>(sample_rate, frames_per_buffer);
         g_streamer->start();
     }
+    std::cout << "start_streaming end" << "\n";
 }
 
 void stop_streaming() {
+    std::cout << "stop_streaming start" << "\n";
     if (g_streamer) {
         g_streamer->stop();
         //g_streamer.reset();
     }
+    std::cout << "stop_streaming end" << "\n";
+
 }
 
 void clear_buffer() {
@@ -66,9 +71,13 @@ void clear_buffer() {
 }
 
 std::vector<float> get_live_audio_buffer() {
+    std::cout << "get_live_audio_buffer start" << "\n";
     if (g_streamer) {
+        std::cout << "g_streamer found" << "\n";
         return g_streamer->getBufferedAudio();
     }
+    std::cout << "get_live_audio_buffer end" << "\n";
+
     return {};
 }
 

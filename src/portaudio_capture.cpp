@@ -1,6 +1,10 @@
 #include "portaudio_capture.hpp"
 #include <iostream>
 
+// add tiny delay debugging
+#include <thread>
+#include <chrono>
+
 AudioStreamer::AudioStreamer(int sample_rate, int frames_per_buffer)
     : stream_(nullptr),
       running_(false),
@@ -100,6 +104,9 @@ int AudioStreamer::streamCallback(const void* inputBuffer, void*, unsigned long 
 
     std::cerr << "[Callback] Received audio buffer with " << framesPerBuffer << " frames\n";
 
+    // inside streamCallback
+    // std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
     self->processInput(static_cast<const float*>(inputBuffer), framesPerBuffer);
     return paContinue;
 }
@@ -122,7 +129,9 @@ void AudioStreamer::processInput(const float* input, size_t frameCount) {
 std::vector<float> AudioStreamer::getBufferedAudio() {
     std::lock_guard<std::mutex> lock(buffer_mutex_);
     std::vector<float> result = buffer_;
-    // buffer_.clear();  // Clear once fetched
+    std::cout << "C++ buffer val 1 before clear:" << buffer_[1] << "\n";
+    buffer_.clear();  // Clear once fetched
+    //std::cout << "C++ buffer val 1 after clear:" << buffer_[1] << "\n";
     return result;
 }
 
